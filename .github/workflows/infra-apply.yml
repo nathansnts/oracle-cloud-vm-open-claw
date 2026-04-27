@@ -5,14 +5,14 @@ name: "Infrastructure — Apply"
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
     paths:
       - "modules/**"
       - "environments/production/**"
       - ".github/workflows/infra-apply.yml"
   pull_request:
-    branches: [main]
-    paths: ["modules/**", "environments/production/**"]
+    branches: [ main ]
+    paths: [ "modules/**", "environments/production/**" ]
   workflow_dispatch: {}
 
 permissions:
@@ -20,23 +20,20 @@ permissions:
   pull-requests: write
 
 env:
-  TF_VERSION:     "1.14.0"
+  TF_VERSION: "1.14.0"
   TF_WORKING_DIR: "environments/production"
-  TF_VAR_tenancy_ocid:   ${{ secrets.OCI_CLI_TENANCY }}
-  TF_VAR_user_ocid:      ${{ secrets.OCI_CLI_USER }}
-  TF_VAR_fingerprint:    ${{ secrets.OCI_CLI_FINGERPRINT }}
-  TF_VAR_private_key:    ${{ secrets.OCI_CLI_KEY_CONTENT }}
-  TF_VAR_region:         ${{ secrets.OCI_CLI_REGION }}
+  TF_VAR_tenancy_ocid: ${{ secrets.OCI_CLI_TENANCY }}
+  TF_VAR_user_ocid: ${{ secrets.OCI_CLI_USER }}
+  TF_VAR_fingerprint: ${{ secrets.OCI_CLI_FINGERPRINT }}
+  TF_VAR_private_key: ${{ secrets.OCI_CLI_KEY_CONTENT }}
+  TF_VAR_region: ${{ secrets.OCI_CLI_REGION }}
   TF_VAR_compartment_id: ${{ secrets.OCI_COMPARTMENT_ID }}
   TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-  TF_VAR_allowed_cidr:   ${{ secrets.ALLOWED_CIDR }}
+  TF_VAR_allowed_cidr: ${{ secrets.ALLOWED_CIDR }}
 
 # ---------------------------------------------------------------------------
 # Reusable steps via composite action (avoids duplicating credential setup)
 # ---------------------------------------------------------------------------
-defaults:
-  run:
-    shell: bash
 
 jobs:
   # =========================================================================
@@ -94,19 +91,30 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure OCI credentials
+        shell: bash
         run: |
           mkdir -p /home/runner/.oci
-          printf '%s\n' "$TF_VAR_private_key" > /home/runner/.oci/oci_api_key.pem
+
+          # Write PEM key
+          printf '%s\n' "$TF_VAR_private_key" \
+            > /home/runner/.oci/oci_api_key.pem
           chmod 600 /home/runner/.oci/oci_api_key.pem
-          cat > /home/runner/.oci/config <<EOF
-                [DEFAULT]
-                user=${TF_VAR_user_ocid}
-                tenancy=${TF_VAR_tenancy_ocid}
-                fingerprint=${TF_VAR_fingerprint}
-                region=${TF_VAR_region}
-                key_file=/home/runner/.oci/oci_api_key.pem
-                EOF
+
+          # Write config using tee to avoid heredoc issues with pipefail
+          {
+            echo "[DEFAULT]"
+            echo "user=${TF_VAR_user_ocid}"
+            echo "tenancy=${TF_VAR_tenancy_ocid}"
+            echo "fingerprint=${TF_VAR_fingerprint}"
+            echo "region=${TF_VAR_region}"
+            echo "key_file=/home/runner/.oci/oci_api_key.pem"
+          } > /home/runner/.oci/config
+
           chmod 600 /home/runner/.oci/config
+
+          # Verify profile exists
+          grep -q "\[DEFAULT\]" /home/runner/.oci/config \
+            || { echo "ERROR: [DEFAULT] profile missing"; exit 1; }
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -142,19 +150,30 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure OCI credentials
+        shell: bash
         run: |
           mkdir -p /home/runner/.oci
-          printf '%s\n' "$TF_VAR_private_key" > /home/runner/.oci/oci_api_key.pem
+
+          # Write PEM key
+          printf '%s\n' "$TF_VAR_private_key" \
+            > /home/runner/.oci/oci_api_key.pem
           chmod 600 /home/runner/.oci/oci_api_key.pem
-          cat > /home/runner/.oci/config <<EOF
-              [DEFAULT]
-              user=${TF_VAR_user_ocid}
-              tenancy=${TF_VAR_tenancy_ocid}
-              fingerprint=${TF_VAR_fingerprint}
-              region=${TF_VAR_region}
-              key_file=/home/runner/.oci/oci_api_key.pem
-              EOF
+
+          # Write config using tee to avoid heredoc issues with pipefail
+          {
+            echo "[DEFAULT]"
+            echo "user=${TF_VAR_user_ocid}"
+            echo "tenancy=${TF_VAR_tenancy_ocid}"
+            echo "fingerprint=${TF_VAR_fingerprint}"
+            echo "region=${TF_VAR_region}"
+            echo "key_file=/home/runner/.oci/oci_api_key.pem"
+          } > /home/runner/.oci/config
+
           chmod 600 /home/runner/.oci/config
+
+          # Verify profile exists
+          grep -q "\[DEFAULT\]" /home/runner/.oci/config \
+            || { echo "ERROR: [DEFAULT] profile missing"; exit 1; }
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
