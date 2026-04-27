@@ -59,6 +59,11 @@ variable "allowed_cidr" {
   description = "CIDR range permitted for inbound SSH and HTTPS access."
   type        = string
   sensitive   = true
+
+  validation {
+    condition     = length(var.allowed_cidr) > 0 && can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$", var.allowed_cidr))
+    error_message = "O valor da variável allowed_cidr está vazio ou inválido. O plan falhou de propósito para evitar erro 400 no apply!"
+  }
 }
 
 # ---------- Compute Configuration ----------------------------------------
