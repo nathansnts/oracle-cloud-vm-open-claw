@@ -70,7 +70,7 @@ jobs:
           fi
 
           # Write OCI config file
-          cat > ~/.oci/config << EOF
+          cat > ~/.oci/config <<EOF
           [DEFAULT]
           user=${TF_VAR_user_ocid}
           tenancy=${TF_VAR_tenancy_ocid}

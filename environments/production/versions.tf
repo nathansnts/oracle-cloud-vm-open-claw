@@ -28,6 +28,7 @@ terraform {
     region    = "sa-saopaulo-1"
 
     # Uses OCI CLI config for auth (API Key from ~/.oci/config)
-    auth = "APIKey"
+    auth                = "APIKey"
+    config_file_profile = "DEFAULT"
   }
 }
