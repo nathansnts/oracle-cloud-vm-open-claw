@@ -60,7 +60,7 @@ jobs:
           mkdir -p ~/.oci
 
           # Write PEM key preserving line breaks (printf handles \n correctly)
-          printf '%s\n' "$OCI_CLI_KEY_CONTENT" > ~/.oci/oci_api_key.pem
+          printf '%s\n' "$TF_VAR_private_key" > ~/.oci/oci_api_key.pem
           chmod 600 ~/.oci/oci_api_key.pem
 
           # Validate key file was written correctly before proceeding
@@ -72,10 +72,10 @@ jobs:
           # Write OCI config file
           cat > ~/.oci/config << EOF
           [DEFAULT]
-          user=${OCI_CLI_USER}
-          tenancy=${OCI_CLI_TENANCY}
-          fingerprint=${OCI_CLI_FINGERPRINT}
-          region=${OCI_CLI_REGION}
+          user=${TF_VAR_user_ocid}
+          tenancy=${TF_VAR_tenancy_ocid}
+          fingerprint=${TF_VAR_fingerprint}
+          region=${TF_VAR_region}
           key_file=${HOME}/.oci/oci_api_key.pem
           EOF
 
