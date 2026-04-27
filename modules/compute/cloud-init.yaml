@@ -1,0 +1,99 @@
+#cloud-config
+# =============================================================================
+# cloud-init.yaml — OpenClaw Provisioning Script (Ubuntu 24.04 LTS)
+# =============================================================================
+# This cloud-init configuration:
+#   1. Updates the OS packages (apt)
+#   2. Installs Node.js (required by OpenClaw) and OpenClaw itself
+#   3. Enables the OpenClaw gateway as a systemd service
+#   4. Configures the instance firewall (ufw) to open the required ports
+#   5. Logs all output to /var/log/cloud-init-openclaw.log
+# =============================================================================
+
+write_files:
+  - path: /opt/openclaw/install.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      LOG="/var/log/cloud-init-openclaw.log"
+      exec > >(tee -a "$LOG") 2>&1
+
+      echo "=== [$(date -Iseconds)] Starting OpenClaw provisioning ==="
+
+      # -----------------------------------------------------------------------
+      # 1. OS Update
+      # -----------------------------------------------------------------------
+      echo ">>> Updating system packages..."
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -y
+      apt-get upgrade -y
+
+      # -----------------------------------------------------------------------
+      # 2. Install Node.js 22 LTS (required by OpenClaw)
+      # -----------------------------------------------------------------------
+      echo ">>> Installing Node.js 22 LTS..."
+      curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      apt-get install -y nodejs
+
+      echo ">>> Node version: $(node --version)"
+      echo ">>> npm  version: $(npm --version)"
+
+      # -----------------------------------------------------------------------
+      # 3. Install OpenClaw (latest) via official installer
+      # -----------------------------------------------------------------------
+      echo ">>> Installing OpenClaw..."
+      npm install -g openclaw@latest
+
+      echo ">>> OpenClaw version: $(openclaw --version || echo 'installed')"
+
+      # -----------------------------------------------------------------------
+      # 4. Create systemd service for OpenClaw gateway
+      # -----------------------------------------------------------------------
+      echo ">>> Creating OpenClaw systemd service..."
+      cat > /etc/systemd/system/openclaw-gateway.service <<'EOF'
+      [Unit]
+      Description=OpenClaw AI Gateway
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      ExecStart=/usr/bin/env openclaw gateway start
+      Restart=on-failure
+      RestartSec=10
+      User=root
+      Environment=NODE_ENV=production
+      StandardOutput=journal
+      StandardError=journal
+
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+
+      systemctl daemon-reload
+      systemctl enable openclaw-gateway.service
+      systemctl start openclaw-gateway.service
+
+      # -----------------------------------------------------------------------
+      # 5. Configure ufw (Ubuntu's default firewall)
+      # -----------------------------------------------------------------------
+      echo ">>> Configuring ufw..."
+      ufw allow 22/tcp comment "SSH"
+      ufw allow 443/tcp comment "HTTPS"
+      ufw allow 18789/tcp comment "OpenClaw UI"
+      ufw --force enable
+
+      echo ">>> Firewall rules:"
+      ufw status verbose
+
+      echo "=== [$(date -Iseconds)] OpenClaw provisioning complete ==="
+
+runcmd:
+  - |
+    for i in {1..3}; do
+      bash /opt/openclaw/install.sh && break
+      echo "Tentativa $i falhou, retentando em 10s..."
+      sleep 10
+    done
