@@ -59,21 +59,30 @@ jobs:
         run: |
           mkdir -p ~/.oci
 
-          # Write the PEM private key to disk
-          echo "$OCI_CLI_KEY_CONTENT" > ~/.oci/oci_api_key.pem
+          # Write PEM key preserving line breaks (printf handles \n correctly)
+          printf '%s\n' "$OCI_CLI_KEY_CONTENT" > ~/.oci/oci_api_key.pem
           chmod 600 ~/.oci/oci_api_key.pem
 
-          # Write the OCI config file pointing to the key above
-          cat <<EOF > ~/.oci/config
+          # Validate key file was written correctly before proceeding
+          if ! grep -q "BEGIN" ~/.oci/oci_api_key.pem; then
+            echo "ERROR: PEM key file is malformed or empty"
+            exit 1
+          fi
+
+          # Write OCI config file
+          cat > ~/.oci/config << EOF
           [DEFAULT]
-          user=$OCI_CLI_USER
-          tenancy=$OCI_CLI_TENANCY
-          fingerprint=$OCI_CLI_FINGERPRINT
-          region=$OCI_CLI_REGION
-          key_file=~/.oci/oci_api_key.pem
+          user=${OCI_CLI_USER}
+          tenancy=${OCI_CLI_TENANCY}
+          fingerprint=${OCI_CLI_FINGERPRINT}
+          region=${OCI_CLI_REGION}
+          key_file=${HOME}/.oci/oci_api_key.pem
           EOF
 
           chmod 600 ~/.oci/config
+
+          # Confirm both files exist with correct permissions
+          ls -la ~/.oci/
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
