@@ -22,7 +22,7 @@ check "instance_is_running" {
 check "instance_has_public_ip" {
   assert {
     condition = (
-      module.compute.instance_public_ip != null && 
+      module.compute.instance_public_ip != null &&
       module.compute.instance_public_ip != ""
     )
     error_message = "Compute instance does not have a public IP address assigned."
@@ -43,7 +43,7 @@ check "vcn_has_internet_access" {
 check "security_list_configured" {
   assert {
     condition = (
-      module.network.security_list_id != null && 
+      module.network.security_list_id != null &&
       module.network.security_list_id != ""
     )
     error_message = "Security list is not properly configured."

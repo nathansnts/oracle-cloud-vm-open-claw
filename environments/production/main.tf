@@ -30,14 +30,14 @@ module "network" {
 module "compute" {
   source = "../../modules/compute"
 
-  compartment_id        = var.compartment_id
-  availability_domain   = var.availability_domain
-  subnet_id             = module.network.public_subnet_id
-  instance_display_name = "${local.name_prefix}-instance"
+  compartment_id          = var.compartment_id
+  availability_domain     = var.availability_domain
+  subnet_id               = module.network.public_subnet_id
+  instance_display_name   = "${local.name_prefix}-instance"
   instance_hostname_label = "openclaw"
-  instance_shape        = var.instance_shape
-  instance_ocpus        = var.instance_ocpus
-  instance_memory_gb    = var.instance_memory_gb
-  ssh_public_key        = var.ssh_public_key
-  tags                  = local.common_tags
+  instance_shape          = var.instance_shape
+  instance_ocpus          = var.instance_ocpus
+  instance_memory_gb      = var.instance_memory_gb
+  ssh_public_key          = var.ssh_public_key
+  tags                    = local.common_tags
 }
