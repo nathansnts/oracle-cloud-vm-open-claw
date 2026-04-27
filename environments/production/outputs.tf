@@ -46,5 +46,5 @@ output "ssh_connect_command" {
 output "openclaw_ui_url" {
   description = "URL for the OpenClaw Control UI (accessible after cloud-init completes)."
   value       = "http://${module.compute.instance_public_ip}:18789"
-  sensitive = true
+  sensitive   = true
 }
