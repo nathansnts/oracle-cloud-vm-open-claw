@@ -20,7 +20,9 @@ permissions:
   pull-requests: write
 
 env:
-  TF_VERSION: "1.14.0"
+  TF_VERSION: ${{ vars.TF_VERSION }}
+  TF_OCI_VCN_CIDR: ${{ vars.TF_OCI_VCN_CIDR }}
+  TF_OCI_SUBNET_CIDR: ${{ var.TF_OCI_SUBNET_CIDR }}
   TF_WORKING_DIR: "environments/production"
   TF_VAR_tenancy_ocid: ${{ secrets.OCI_CLI_TENANCY }}
   TF_VAR_user_ocid: ${{ secrets.OCI_CLI_USER }}
