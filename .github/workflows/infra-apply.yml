@@ -53,6 +53,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Writes ~/.oci/config on the runner using GitHub Secrets
+      # This replaces the local ~/.oci/config that does not exist on the runner
+      - name: Configure OCI credentials
+        run: |
+          mkdir -p ~/.oci
+
+          # Write the PEM private key to disk
+          echo "$OCI_CLI_KEY_CONTENT" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+
+          # Write the OCI config file pointing to the key above
+          cat <<EOF > ~/.oci/config
+          [DEFAULT]
+          user=$OCI_CLI_USER
+          tenancy=$OCI_CLI_TENANCY
+          fingerprint=$OCI_CLI_FINGERPRINT
+          region=$OCI_CLI_REGION
+          key_file=~/.oci/oci_api_key.pem
+          EOF
+
+          chmod 600 ~/.oci/config
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
