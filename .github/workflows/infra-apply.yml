@@ -1,8 +1,4 @@
-###############################################################################
-# .github/workflows/infra-apply.yml
-# CI/CD Pipeline — Create or Update OCI Infrastructure
-#
-# Flow: Checkout → Setup → Lint → Validate → Security Scan → Plan → Approve → Apply
+# Flow: Lint → Validate → SAST → Plan → Approve → Apply → Validate
 ###############################################################################
 
 name: "Infrastructure — Apply"
@@ -16,9 +12,7 @@ on:
       - ".github/workflows/infra-apply.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "modules/**"
-      - "environments/production/**"
+    paths: ["modules/**", "environments/production/**"]
   workflow_dispatch: {}
 
 permissions:
@@ -26,63 +20,34 @@ permissions:
   pull-requests: write
 
 env:
-  TF_VERSION: "~> 1.14.0"
+  TF_VERSION:     "1.14.0"
   TF_WORKING_DIR: "environments/production"
-
-  # OCI provider auth (from repository secrets)
-  TF_VAR_tenancy_ocid: ${{ secrets.OCI_CLI_TENANCY }}
-  TF_VAR_user_ocid: ${{ secrets.OCI_CLI_USER }}
-  TF_VAR_fingerprint: ${{ secrets.OCI_CLI_FINGERPRINT }}
-  TF_VAR_private_key: ${{ secrets.OCI_CLI_KEY_CONTENT }}
-  TF_VAR_region: ${{ secrets.OCI_CLI_REGION }}
-
-  # Infrastructure variables
+  TF_VAR_tenancy_ocid:   ${{ secrets.OCI_CLI_TENANCY }}
+  TF_VAR_user_ocid:      ${{ secrets.OCI_CLI_USER }}
+  TF_VAR_fingerprint:    ${{ secrets.OCI_CLI_FINGERPRINT }}
+  TF_VAR_private_key:    ${{ secrets.OCI_CLI_KEY_CONTENT }}
+  TF_VAR_region:         ${{ secrets.OCI_CLI_REGION }}
   TF_VAR_compartment_id: ${{ secrets.OCI_COMPARTMENT_ID }}
   TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-  TF_VAR_allowed_cidr: ${{ secrets.ALLOWED_CIDR }}
+  TF_VAR_allowed_cidr:   ${{ secrets.ALLOWED_CIDR }}
+
+# ---------------------------------------------------------------------------
+# Reusable steps via composite action (avoids duplicating credential setup)
+# ---------------------------------------------------------------------------
+defaults:
+  run:
+    shell: bash
 
 jobs:
   # =========================================================================
-  # Stage 1: Lint, Validate, and Security Scan
+  # Stage 1 — Lint, Validate, Security Scan
   # =========================================================================
   lint-and-scan:
-    name: "Lint · Validate · Security Scan"
+    name: "Lint · Validate · SAST"
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Writes ~/.oci/config on the runner using GitHub Secrets
-      # This replaces the local ~/.oci/config that does not exist on the runner
-      - name: Configure OCI credentials
-        run: |
-          mkdir -p ~/.oci
-
-          # Write PEM key preserving line breaks (printf handles \n correctly)
-          printf '%s\n' "$TF_VAR_private_key" > ~/.oci/oci_api_key.pem
-          chmod 600 ~/.oci/oci_api_key.pem
-
-          # Validate key file was written correctly before proceeding
-          if ! grep -q "BEGIN" ~/.oci/oci_api_key.pem; then
-            echo "ERROR: PEM key file is malformed or empty"
-            exit 1
-          fi
-
-          # Write OCI config file
-          cat > ~/.oci/config <<EOF
-          [DEFAULT]
-          user=${TF_VAR_user_ocid}
-          tenancy=${TF_VAR_tenancy_ocid}
-          fingerprint=${TF_VAR_fingerprint}
-          region=${TF_VAR_region}
-          key_file=${HOME}/.oci/oci_api_key.pem
-          EOF
-
-          chmod 600 ~/.oci/config
-
-          # Confirm both files exist with correct permissions
-          ls -la ~/.oci/
+      - uses: actions/checkout@v4
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -90,29 +55,26 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Format Check
-        working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform fmt -check -recursive -diff
-
-      - name: Terraform Init (backend disabled for validation)
         working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Init (no backend)
         run: terraform init -backend=false
+        working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Terraform Validate
-        working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform validate
-
-      - name: Install tfsec
-        run: |
-          curl -sL https://github.com/aquasecurity/tfsec/releases/latest/download/tfsec-linux-amd64 \
-            -o /usr/local/bin/tfsec
-          chmod +x /usr/local/bin/tfsec
+        working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Run tfsec (SAST)
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: tfsec . --format json --out tfsec-results.json --soft-fail
-        # soft-fail allows the pipeline to continue; review results in artifacts.
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: ${{ env.TF_WORKING_DIR }}
+          soft_fail: true
+          format: json
+          additional_args: --out tfsec-results.json
 
-      - name: Upload tfsec Results
+      - name: Upload tfsec results
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -121,7 +83,7 @@ jobs:
           retention-days: 30
 
   # =========================================================================
-  # Stage 2: Plan
+  # Stage 2 — Plan
   # =========================================================================
   plan:
     name: "Terraform Plan"
@@ -129,32 +91,37 @@ jobs:
     needs: lint-and-scan
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Configure OCI credentials
+        run: |
+          mkdir -p /home/runner/.oci
+          printf '%s\n' "$TF_VAR_private_key" > /home/runner/.oci/oci_api_key.pem
+          chmod 600 /home/runner/.oci/oci_api_key.pem
+          cat > /home/runner/.oci/config <<EOF
+                [DEFAULT]
+                user=${TF_VAR_user_ocid}
+                tenancy=${TF_VAR_tenancy_ocid}
+                fingerprint=${TF_VAR_fingerprint}
+                region=${TF_VAR_region}
+                key_file=/home/runner/.oci/oci_api_key.pem
+                EOF
+          chmod 600 /home/runner/.oci/config
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Configure OCI S3-compatible backend credentials
-        run: |
-          # OCI Object Storage uses S3-compatible API for Terraform backend.
-          echo "AWS_ACCESS_KEY_ID=${{ secrets.OCI_CLI_USER }}" >> "$GITHUB_ENV"
-          echo "AWS_SECRET_ACCESS_KEY=${{ secrets.OCI_CLI_FINGERPRINT }}" >> "$GITHUB_ENV"
-
       - name: Terraform Init
+        run: terraform init
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform init \
-            -backend-config="bucket=${{ secrets.OCI_BUCKET_NAME }}" \
-            -backend-config="region=${{ secrets.OCI_CLI_REGION }}"
 
       - name: Terraform Plan
-        working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform plan -out=tfplan -input=false
+        working-directory: ${{ env.TF_WORKING_DIR }}
 
-      - name: Upload Plan Artifact
+      - name: Upload plan artifact
         uses: actions/upload-artifact@v4
         with:
           name: tfplan
@@ -162,108 +129,91 @@ jobs:
           retention-days: 5
 
   # =========================================================================
-  # Stage 3: Apply (requires manual approval)
+  # Stage 3 — Apply (requires manual approval via GitHub Environment)
   # =========================================================================
   apply:
     name: "Terraform Apply"
     runs-on: ubuntu-latest
     needs: plan
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-
-    environment:
-      name: production
+    environment: production
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Configure OCI credentials
+        run: |
+          mkdir -p /home/runner/.oci
+          printf '%s\n' "$TF_VAR_private_key" > /home/runner/.oci/oci_api_key.pem
+          chmod 600 /home/runner/.oci/oci_api_key.pem
+          cat > /home/runner/.oci/config <<EOF
+              [DEFAULT]
+              user=${TF_VAR_user_ocid}
+              tenancy=${TF_VAR_tenancy_ocid}
+              fingerprint=${TF_VAR_fingerprint}
+              region=${TF_VAR_region}
+              key_file=/home/runner/.oci/oci_api_key.pem
+              EOF
+          chmod 600 /home/runner/.oci/config
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Download Plan Artifact
+      - name: Download plan artifact
         uses: actions/download-artifact@v4
         with:
           name: tfplan
           path: ${{ env.TF_WORKING_DIR }}
 
-      - name: Configure OCI S3-compatible backend credentials
-        run: |
-          echo "AWS_ACCESS_KEY_ID=${{ secrets.OCI_CLI_USER }}" >> "$GITHUB_ENV"
-          echo "AWS_SECRET_ACCESS_KEY=${{ secrets.OCI_CLI_FINGERPRINT }}" >> "$GITHUB_ENV"
-
       - name: Terraform Init
+        run: terraform init
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform init \
-            -backend-config="bucket=${{ secrets.OCI_BUCKET_NAME }}" \
-            -backend-config="region=${{ secrets.OCI_CLI_REGION }}"
 
       - name: Terraform Apply
-        working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform apply -auto-approve -input=false tfplan
-
-      - name: Export Terraform Outputs
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: |
-          terraform output -json > ../outputs.json
 
-      - name: Upload Terraform Outputs
-        uses: actions/upload-artifact@v4
+      - name: Export and upload Terraform outputs
+        run: terraform output -json > ../../outputs.json
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - uses: actions/upload-artifact@v4
         with:
           name: terraform-outputs
           path: outputs.json
           retention-days: 5
 
   # =========================================================================
-  # Stage 4: Validate OpenClaw Deployment
+  # Stage 4 — Validate OpenClaw via SSH
   # =========================================================================
   validate:
-    name: "Validate OpenClaw Deployment"
+    name: "Validate OpenClaw"
     runs-on: ubuntu-latest
     needs: apply
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download Terraform Outputs
+      - name: Download Terraform outputs
         uses: actions/download-artifact@v4
         with:
           name: terraform-outputs
           path: .
 
-      - name: Extract Instance IP
-        id: extract_ip
+      - name: Setup SSH and validate
         run: |
           INSTANCE_IP=$(jq -r '.instance_public_ip.value' outputs.json)
-          echo "instance_ip=${INSTANCE_IP}" >> "$GITHUB_OUTPUT"
-          echo "Instance IP: ${INSTANCE_IP}"
-
-      - name: Setup SSH Key
-        run: |
-          # Create temporary SSH key file
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/openclaw_key
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/openclaw_key
           chmod 600 ~/.ssh/openclaw_key
-          # Add host key verification bypass
-          ssh-keyscan -H "${{ steps.extract_ip.outputs.instance_ip }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -H "${INSTANCE_IP}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          chmod +x scripts/validate-openclaw.sh
+          ./scripts/validate-openclaw.sh "${INSTANCE_IP}" ~/.ssh/openclaw_key 300
+        continue-on-error: true
 
-      - name: Make Validation Script Executable
-        run: chmod +x scripts/validate-openclaw.sh
-
-      - name: Validate OpenClaw Installation
-        run: |
-          ./scripts/validate-openclaw.sh \
-            "${{ steps.extract_ip.outputs.instance_ip }}" \
-            ~/.ssh/openclaw_key \
-            300  # 5 minute timeout
-        continue-on-error: true  # Don't fail pipeline if validation has warnings
-
-      - name: Cleanup SSH Key
+      - name: Cleanup SSH key
         if: always()
-        run: |
-          rm -f ~/.ssh/openclaw_key
-          rm -f ~/.ssh/known_hosts
+        run: rm -f ~/.ssh/openclaw_key ~/.ssh/known_hosts
