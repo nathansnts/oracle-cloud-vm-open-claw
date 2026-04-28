@@ -75,6 +75,19 @@ resource "oci_core_security_list" "public" {
     }
   }
 
+  ingress_security_rules {
+    protocol    = "6" # TCP
+    source      = var.allowed_cidr
+    source_type = "CIDR_BLOCK"
+    description = "Allow OpenClaw UI from trusted CIDR"
+    stateless   = false
+
+    tcp_options {
+      min = 18789
+      max = 18789
+    }
+  }
+
   # --- Egress rule (unrestricted) ---
 
   egress_security_rules {
