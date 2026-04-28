@@ -32,7 +32,7 @@ variable "instance_hostname_label" {
 variable "instance_shape" {
   description = "OCI compute shape (e.g. VM.Standard.E4.Flex)."
   type        = string
-  default     = "VM.Standard.E4.Flex"
+  default     = "VM.Standard.E3.Flex"
 }
 
 variable "instance_ocpus" {
