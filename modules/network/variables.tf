@@ -43,8 +43,13 @@ variable "allowed_cidr" {
   sensitive   = true
 
   validation {
-    condition     = length(var.allowed_cidr) > 0 && can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$", var.allowed_cidr))
-    error_message = "O valor da variável allowed_cidr está vazio ou inválido. O plan falhou de propósito para evitar erro 400 no apply!"
+    condition     = length(var.allowed_cidr) > 0
+    error_message = "A variável allowed_cidr está VAZIA. O GitHub Actions não conseguiu ler o secret. Certifique-se de que o nome no 'Repository Secrets' é exatamente OCI_ALLOWED_CIDR e não ALLOWED_CIDR."
+  }
+
+  validation {
+    condition     = length(var.allowed_cidr) == 0 || can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$", var.allowed_cidr))
+    error_message = "A variável allowed_cidr tem um FORMATO INVÁLIDO. O valor deve ser um bloco CIDR puro, por exemplo '187.19.0.0/16' (sem espaços no final, sem comentários e com a máscara /16 ou /32)."
   }
 }
 
