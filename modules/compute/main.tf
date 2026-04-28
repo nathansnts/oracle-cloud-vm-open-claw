@@ -18,17 +18,6 @@ data "oci_core_images" "ubuntu_2404" {
   }
 }
 
-# ---------- Cloud-init template ------------------------------------------
-data "cloudinit_config" "openclaw" {
-  gzip          = true
-  base64_encode = true
-
-  part {
-    content_type = "text/cloud-config"
-    content      = file("${path.module}/cloud-init.yaml")
-    filename     = "cloud-init.yaml"
-  }
-}
 
 # ---------- Compute Instance ---------------------------------------------
 resource "oci_core_instance" "this" {
