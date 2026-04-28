@@ -59,7 +59,6 @@ resource "oci_core_instance" "this" {
 
   metadata = {
     ssh_authorized_keys = var.ssh_public_key
-    user_data           = data.cloudinit_config.openclaw.rendered
   }
 
   freeform_tags = var.tags
